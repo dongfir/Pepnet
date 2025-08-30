@@ -2,65 +2,84 @@ PepNet
 
 Residue-level peptide–protein prediction via a cross-modal graph network.
 
-Install Dependencies
+![Python >= 3.10](https://img.shields.io/badge/python-%3E%3D3.10-blue)
+![torch 2.7.1+cu118](https://img.shields.io/badge/torch-2.7.1%2Bcu118-EE4C2C)
+![torch_geometric 2.6.1](https://img.shields.io/badge/torch_geometric-2.6.1-0F9D58)
+
+
+TL;DR. PepNet uses dual encoders (sequence + structural GNN), cross-modal attention, and a residual fusion block. The classifier head is noise-robust (cosine-margin + gate-based adaptive fusion + sample-wise weights).
+Training supports AMP, EMA, cosine decay with warmup, and gradient clipping. Evaluation applies isotonic/temperature calibration and MCC-based threshold search, mirroring training for reproducibility.
+1) Installation
 
 Option A (recommended)
 pip install -r requirements.txt
 
 Option B (pin common versions)
-
 pip install torch==2.7.1+cu118
 pip install torch-geometric==2.6.1
 pip install numpy==2.3.1
 pip install scikit-learn==1.7.1
 pip install tqdm==4.67.1
 pip install pandas
-Optional for plotting
-pip install matplotlib seaborn
 
+No HHblits/ProtTrans required; datasets are loaded from .pt.
 
-No HHblits/ProtTrans required; data are loaded from .pt directly.
+2) Pretrained Weights & Datasets (GitHub Releases)
 
+Download
 
-Description
+Weights
 
-PepNet uses dual encoders (sequence & structural GNN), cross-modal attention, and a residual fusion block. The classifier head is noise-robust (cosine-margin + gate-based adaptive fusion + sample-wise weights).
+pepnet_model.pt
 
-
-Training supports EMA, AMP mixed precision, cosine decay with warmup, and gradient clipping. Evaluation applies isotonic/temperature calibration and MCC-based threshold search, aligned with training.
-
+pepnet_model4_seed42.pt
 
 Datasets
 
-Put your processed dataset at:
+biolip1.pt
 
-./data/biolip1.pt
+gnn_crossmodal_with_mask1.pt
 
+Quick fetch
 
-Or override via environment variable:
+<details> <summary>Windows PowerShell</summary>
+New-Item -ItemType Directory -Force -Path .\data, .\results\models | Out-Null
+iwr https://github.com/dongfir/Pepnet/releases/download/v0.1.0/biolip1.pt                   -OutFile .\data\biolip1.pt
+iwr https://github.com/dongfir/Pepnet/releases/download/v0.1.0/gnn_crossmodal_with_mask1.pt -OutFile .\data\gnn_crossmodal_with_mask1.pt
+iwr https://github.com/dongfir/Pepnet/releases/download/v0.1.0/pepnet_model.pt              -OutFile .\results\models\pepnet_model.pt
+iwr https://github.com/dongfir/Pepnet/releases/download/v0.1.0/pepnet_model4_seed42.pt      -OutFile .\results\models\pepnet_model4_seed42.pt
 
+</details> <details> <summary>Linux/macOS</summary>
+mkdir -p data results/models
+wget -O data/biolip1.pt https://github.com/dongfir/Pepnet/releases/download/v0.1.0/biolip1.pt
+wget -O data/gnn_crossmodal_with_mask1.pt https://github.com/dongfir/Pepnet/releases/download/v0.1.0/gnn_crossmodal_with_mask1.pt
+wget -O results/models/pepnet_model.pt https://github.com/dongfir/Pepnet/releases/download/v0.1.0/pepnet_model.pt
+wget -O results/models/pepnet_model4_seed42.pt https://github.com/dongfir/Pepnet/releases/download/v0.1.0/pepnet_model4_seed42.pt
 
-Windows PowerShell
+</details>
 
-$env:PEPNET_DATA_PATH="D:\path\to\biolip1.pt"
+Target layout after download:
 
+data/
+  ├─ biolip1.pt
+  └─ gnn_crossmodal_with_mask1.pt
+results/
+  └─ models/
+      ├─ pepnet_model.pt
+      └─ pepnet_model4_seed42.pt
 
-Linux/macOS
+3) Dataset format (.pt)
 
-export PEPNET_DATA_PATH=/data/biolip1.pt
+Load with torch.load(path, weights_only=False).
+It should return an indexable sequence (e.g., list) of torch_geometric.data.Data. Each Data object contains:
 
-.pt file structure (PyG Data per graph)
-
-
-torch.load(path, weights_only=False) should return an indexable sequence (e.g., list) of torch_geometric.data.Data. Fields:
-
-Field	Shape / dtype	Required	Notes (CN)
-x	FloatTensor [N, 256]		
-edge_index	LongTensor [2, E]		
-y	Float/LongTensor [N]		
-pdb_id	str or list[str]	
-protein_chain_id	str or list[str]	
-residue_ids	Tensor/List [N]	
+Field	Shape / dtype	Required	Notes
+x	FloatTensor [N, 256]	✔︎	Residue node features; 256 must match config.in_dim.
+edge_index	LongTensor [2, E]	✔︎	COO edges (0-based).
+y	Float/LongTensor [N]	✔︎	Residue-level 0/1 labels.
+pdb_id	str or list[str]	–	PDB identifier (exported to CSV if present).
+protein_chain_id	str or list[str]	–	Chain ID (exported to CSV if present).
+residue_ids	Tensor/List [N]	–	Residue indices; fallback to 0..N-1 if missing.
 
 Quick sanity check
 
@@ -72,12 +91,14 @@ print("x:", d0.x.shape, d0.x.dtype)
 print("edge_index:", d0.edge_index.shape, d0.edge_index.dtype)
 print("y:", d0.y.shape, d0.y.dtype)
 
-Instructions for Running the Model
-1) Configure paths (optional)
+4) Run
+(a) Configure paths (optional)
 
+Override defaults via environment variables:
 
+PEPNET_DATA_PATH (default ./data/biolip1.pt)
 
-PEPNET_MODEL_PATH (default ./results/models/pepnet_model4_seed77777.pt)
+PEPNET_MODEL_PATH (default ./results/models/pepnet_model.pt)
 
 PEPNET_TRAIN_SCRIPT_PATH (default ./train/train.py)
 
@@ -87,34 +108,62 @@ PEPNET_PREDICT_SCRIPT_PATH (default ./predict.py)
 
 PEPNET_PREDICTION_PATH (default ./results/predictions)
 
-2) Train / Evaluate / Predict (one-click entry)
+Examples
+
+Biolip
+
+PowerShell
+
+$env:PEPNET_DATA_PATH  = "$PWD\data\biolip1.pt"
+$env:PEPNET_MODEL_PATH = "$PWD\results\models\pepnet_model.pt"
 
 
+Bash
 
+export PEPNET_DATA_PATH="$PWD/data/biolip1.pt"
+export PEPNET_MODEL_PATH="$PWD/results/models/pepnet_model.pt"
+
+
+Self-built
+
+PowerShell
+
+$env:PEPNET_DATA_PATH  = "$PWD\data\gnn_crossmodal_with_mask1.pt"
+$env:PEPNET_MODEL_PATH = "$PWD\results\models\pepnet_model4_seed42.pt"
+
+
+Bash
+
+export PEPNET_DATA_PATH="$PWD/data/gnn_crossmodal_with_mask1.pt"
+export PEPNET_MODEL_PATH="$PWD/results/models/pepnet_model4_seed42.pt"
+
+(b) One-click entry
 python main.py
-Choose / ：
-1 Train  （AdamW + AMP + EMA + cosine warmup；default 9:1 split ）
-2 Evaluate（Isotonic/Temp calibration + MCC threshold sweep；7 metrics ）
-3 Predict （Export residue-level CSV for the validation set ）
-
-Prediction Output (CSV)
-
-File generated at:
-
-./results/predictions/predicted_pepnet_biolip1.csv
 
 
-Columns:
+Menu:
 
-pdb_id — PDB identifier 
+1 = Train (AdamW + AMP + EMA + cosine LR w/ warmup; default 9:1 split)
 
-chain_id — Protein chain ID 
+2 = Evaluate (Isotonic/Temp calibration + MCC threshold sweep; returns 7 metrics)
 
-residue_index — Residue index 
+3 = Predict (export residue-level CSV on the validation split)
 
-true_label — Ground-truth (0/1)
+5) Prediction output (CSV)
 
-predicted_prob — Probability after sigmoid(logit) (0–1)
+Saved under ./results/predictions/ (e.g., predicted_pepnet_biolip1.csv).
+
+Columns
+
+pdb_id — PDB identifier
+
+chain_id — Protein chain ID
+
+residue_index — Residue index (prefers residue_ids, else 0..N-1)
+
+true_label — ground truth (0/1)
+
+predicted_prob — sigmoid(logit) in [0, 1]
 
 Example
 
@@ -122,3 +171,28 @@ pdb_id,chain_id,residue_index,true_label,predicted_prob
 1abc,A,42,1,0.9132
 1abc,A,43,0,0.1875
 1abc,A,44,1,0.7349
+
+6) Reproducibility notes
+
+Fixed seeds for torch, random, and numpy in config.py.
+
+Evaluation mirrors training: isotonic/temperature calibration + MCC threshold search (default scan [0.28, 0.55], step 0.002).
+
+EMA (decay=0.999) used during training; evaluation prefers EMA weights if present.
+
+predict.py prints absolute data_path / model_path / save_dir for debugging.
+
+7) Project layout
+Pepnet/
+├─ data/                           # .pt datasets (keep .gitkeep if empty)
+├─ models/                         # model components
+├─ results/
+│  ├─ models/                      # saved weights (.pt)
+│  └─ predictions/                 # prediction CSVs
+├─ train/
+│  ├─ train.py  ├─ eval.py
+│  ├─ calibration.py ├─ thresholds.py ├─ ema.py
+├─ config.py  ├─ main.py  ├─ predict.py
+└─ requirements.txt  └─ README.md
+
+
