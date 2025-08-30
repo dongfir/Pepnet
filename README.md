@@ -15,8 +15,8 @@ pip install numpy==2.3.1
 pip install scikit-learn==1.7.1
 pip install tqdm==4.67.1
 pip install pandas
-# Optional for plotting
-# pip install matplotlib seaborn
+Optional for plotting
+pip install matplotlib seaborn
 
 
 No HHblits/ProtTrans required; data are loaded from .pt directly.
@@ -92,10 +92,10 @@ PEPNET_PREDICTION_PATH (default ./results/predictions)
 
 
 python main.py
-# Choose / ：
-# 1 Train  （AdamW + AMP + EMA + cosine warmup；default 9:1 split ）
-# 2 Evaluate（Isotonic/Temp calibration + MCC threshold sweep；7 metrics ）
-# 3 Predict （Export residue-level CSV for the validation set ）
+Choose / ：
+1 Train  （AdamW + AMP + EMA + cosine warmup；default 9:1 split ）
+2 Evaluate（Isotonic/Temp calibration + MCC threshold sweep；7 metrics ）
+3 Predict （Export residue-level CSV for the validation set ）
 
 Prediction Output (CSV)
 
