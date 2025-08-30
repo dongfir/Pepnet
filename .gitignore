@@ -50,3 +50,10 @@ data/*
 *.pt
 *.pth
 *.ckpt
+
+!data/biolip1.pt
+!data/gnn_crossmodal_with_mask1.pt
+!results/models/pepnet_biolip_seed777.pt
+!results/models/pepnet_Self-built_seed42.pt
+!results/predictions/predicted_pepnet_biolip1.csv
+!results/predictions/predicted_pepnet_Self-built.csv
