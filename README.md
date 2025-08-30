@@ -188,3 +188,7 @@ Pepnet/
 8) Citation
 
 If you use PepNet in your research, please cite this repository (and your paper if available).
+Example:
+
+index	receptor	peptide	label	predict_score	predict_label
+0	1a1m_A	1a1m_C	1	0.85	1
